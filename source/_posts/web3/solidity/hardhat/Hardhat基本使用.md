@@ -7,7 +7,7 @@ categories:
     - Hardhat
 ---
 
-## 摘要：
+## 摘要
 
 记录一下Hardhat框架的基本使用
 
