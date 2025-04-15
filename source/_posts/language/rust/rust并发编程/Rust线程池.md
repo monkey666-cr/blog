@@ -146,3 +146,9 @@ fn rusty_pool_example2() {
     pool.join();
 }
 ```
+
+## 其余的线程池库
+
+- fast_threadpool: 可以提前分配好线程，避免启动任务时的创建开销。
+- scoped_threadpool: 代码简洁，无需手动同步先成功，作用域控制自动管理线程lefttime，借用检查确保安全。
+- scheduled_thread_pool: 支持定时任务，提供一次和重复调度两种方式。
