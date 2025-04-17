@@ -1,5 +1,5 @@
 ---
-title: "Rust同步原语"
+title: "Rust容器同步原语"
 date: {{ date }}
 categories:
     - 语言
