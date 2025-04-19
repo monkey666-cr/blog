@@ -101,3 +101,20 @@ fn main() {
 
 ## arc-swap
 
+这个方法为实现平台级别的分词系统提供了思路，当租户粒度jieba分词跟新时，加载新的分词数据完成之后加载jiaba后进行替换。
+
+```rust
+use std::sync::Arc;
+
+use arc_swap::ArcSwap;
+
+fn main() {
+    let data = ArcSwap::new(Arc::new(1));
+
+    println!("Initial Value: {}", data.load());
+
+    data.store(Arc::new(2));
+
+    println!("New Value: {}", data.load());
+}
+```
