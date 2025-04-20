@@ -3,6 +3,7 @@ title: "Hardhat配置"
 date: {{ date }}
 categories:
     - Web3
+    - 以太坊
     - Solidity
     - Hardhat
 ---
