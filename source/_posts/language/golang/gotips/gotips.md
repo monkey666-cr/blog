@@ -1,5 +1,5 @@
 ---
-title: "gotips 0-20"
+title: "gotips"
 date: {{ date }}
 categories:
     - 语言
@@ -880,3 +880,536 @@ loop:
 		}
 	}
 ```
+
+## 表驱动测试，测试集和并行运行测试
+
+表驱动测试
+
+```golang
+testCases := []struct {
+	a, b, expected int
+}{
+	{1, 2, 3},
+	{5, 0, 5},
+	{-1, -2, -3},
+	{-5, 10, 5},
+}
+```
+
+```golang
+func TestAdd(t *testing.T) {
+	// ..testCases
+
+	for _, tc := range testCases {
+		got := add(tc.a, tc.b)
+
+		if got != tc.expected {
+			t.Errorf(
+				"add(%d, %d) = %d; want %d",
+				tc.a, tc.b, got, tc.expected
+			)
+		}
+	}
+}
+```
+
+测试集和并行运行测试
+
+测试集让你以逻辑方式组织测试，并将他们作为较大的测试函数的一部分运行。
+
+```golang
+func TestAdd(t *testing.T) {
+	testCases := []struct {
+		name string
+		a, b, excepted int
+	}{
+		{"two positives", 1, 2, 3},
+		{"positive and zero", 5, 0, 5},
+	}
+}
+
+for _, tc := range testCases {
+	tc := tc // before Go 1.22
+
+	t.Run(tc.name, func(t *testing.T) {
+		t.Parallel() // run this subtest in parallel
+
+		got := add(tc.a, tc.b)
+		if got != tc.expected {
+			t.Errorf(
+				"add(%d, %d) = %d; want %d",
+				tc.a, tc.b, got, tc.excepcted
+			)
+		}
+	})
+}
+```
+
+## 避免使用全局变量，尤其是可变变量
+
+可以通过依赖注入优化
+
+如果全局变量不会改变，那还是可以继续使用全局变量
+
+## 赋予调用者决策权
+
+当你编写函数或包时，必须决定：如何管理错误，时打印日志还是触发panic？创建goruntine是否合适？将上下文超时设置为10秒是个好主意吗？
+
+- 处理错误
+- Goroutines
+
+## 结构体不可比较
+
+在Go语言中如果结构体中每个字段都是可比较的，那么该结构体本身也可以比较。
+
+```golang
+package main
+
+import (
+	"fmt"
+	"math"
+)
+
+type SimplePoint struct {
+	X, Y float64
+}
+
+func (s *SimplePoint) Equals(other SimplePoint) bool {
+	return math.Abs(s.X) == other.X && math.Abs(s.Y) == other.Y
+}
+
+// [0]func() 无成本，不可比较, 不要放到最后面
+type Point struct {
+	_    [0]func()
+	X, Y float64
+}
+
+func main() {
+	p1 := SimplePoint{1.0, 2.0}
+	p2 := SimplePoint{1.0, 2.0}
+
+	fmt.Println(p1 == p2)
+}
+```
+
+## 避免使用init()
+
+`init()`是一个特殊的函数，他在主函数之前和全局变量初始化之后运行：
+
+
+```golang
+var precomputedValue float64
+
+func init() {
+	precomputedValue = math.Sqrt(2) * math.Pi
+}
+
+func main() {
+	println("The precomputed value is:", precomputedValue)
+}
+```
+
+通常用于准备一些全局变量，但是最好保持全局变量的数量尽量少。
+
+## 避免使用全局变量，尤其是可变变量
+
+```golang
+// SOLUTION 1
+var precomputedSqrtPi = calculateSqrt2TimePi()
+
+func calculateSqrt2TimesPi() {
+	return math.Sqrt(2) * math.Pi
+}
+
+// SOLUTION 2
+var precomputedSqrtPi = math.Sqrt(2) * math.Pi
+```
+
+- 1. 副作用
+
+`init()`可以更改全局状态或引起其他意外效果
+
+这意味着仅仅添加一个包到程序中就肯能改变程序的行为方式，更难理解正在发生的事情
+
+
+- 2. 测试挑战
+
+会引入一些意外的操作
+
+- 3. 团队合作
+
+- 4. 全局变量
+
+## 针对容器化环境调整GOMACPROCS
+
+GOMACPROCS决定了可以同时运行的用户级Go代码的系统线程数量上线，默认值与操作系统的逻辑CPU核数一致。
+
+- 1. 上下文切换：当线程数量超过CPU核心数量时，操作系统会频繁在多个线程间切换。
+- 2. 调度效率低：Go的调度器可能会创建出实际CPU限制下可执行的更多的goroutine，从而导致CPU的时间争夺。
+- 3. CPU密集型任务的使用效率欠佳：Go程序通常是CPU密集型的，这意味着每个线程可以分配到一个独立的CPU上执行，而无需等待时，他们的变现最佳。
+
+解决方案：
+
+使用`uber-go/automaxprocs`可以自动调整GOMACPROCS可以适配容器的CPU限制。
+
+```golang
+import _ "go.uber.org/automaxpprocs"
+
+func main() {
+	// ...
+}
+```
+
+## 枚举从1开始用于分类，从0用于默认情况
+
+```golang
+type UserRole int
+
+const (
+	Admin UserRole = iota // Admin = 0
+	Editor                // Editor = 1
+	Viewer                // Viewer = 2
+)
+```
+
+如果一个`UserRole`变量被声明而未初始化，其默认值为0，这可能无意中将其设置为管理员角色。
+
+以下是一条使用准则：
+
+从1开始枚举是一种策略，确保零值不会错误地代表一个又意义得状态。当每个新创建得实例都自然的对应一个有意义的初始状态时，从0开始枚举是可取的。
+
+## 尽在必要时为客户端定义error(var Err = errors.New)
+
+这种做法并不是总是必要的：
+
+```golang
+var (
+	ErrPriceTooHigh = errors.New("sale: input price is too high")
+	ErrPriceTooLow = errors.New("sale: input price is too low")
+	ErrAlreadySale = errors.New("sale: item already in sale")
+)
+
+func Sale(price int) error {
+	// ...
+	if isPPriceHigh(price) {
+		return ErrPriceTooHigh
+	}
+}
+```
+
+开发人员想要控制每一个error，但是这是多余的。
+
+这对于维护者是一个负担，他们必须记住或者查询每一个error的细节。
+
+## 使用空字段防止结构体无键字面量
+
+## 简化接口并只要求你真正需要的东西
+
+- 1. 只在实际需要时才定义接口。
+- 2. 接受接口并返回具体类型。
+- 3. 将接口放在他们被使用的地方（消费者），而不是他们被创建得地方（生产者）。
+
+## 将互斥锁放在保护的数据附近
+
+```golang
+package main
+
+import (
+	"sync"
+	"time"
+)
+
+type UserSession struct {
+	ID         string
+	LastLogin  time.Time
+	isLoggedIn bool
+
+	mu          sync.Mutex
+	Preferences map[string]interface{}
+	Cart        []string
+}
+
+func main() {
+
+}
+```
+
+## 如果不需要使用某个参数，删除它或者是显示地忽略它
+
+```golang
+type FileDownloader interface {
+	FetchFile(url string, checksum string) error
+}
+
+func (sd Downloader) FetchFile(url string, _ string) error {
+	err := sd.file.Download(url)
+	if err != nil {
+		return err
+	}	
+
+	return nil
+}
+```
+
+## `sync.Once`是执行单次操作的最佳方式
+
+
+```golang
+var instance *Config
+
+func GetConfig() *Config {
+	if instance == nil {
+		instance = LoadConfig()
+	}
+
+	return instance
+}
+```
+
+
+可能会存在多次执行LoadConfig方法
+
+```golang
+var (
+	once     sync.Once
+	instance *Config
+)
+
+func GetConfig() *Config {
+	once.Do(func() {
+		instance = LoadConfig()
+	})
+
+	return instance
+}
+```
+
+## 使用内置锁的类型(`sync.Mutex`嵌入)
+
+```golang
+type MyStruct struct {
+	mu sync.Mutex
+
+	// other fields
+}
+
+func (s *MyStruct) DoSomething() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// do something
+}
+```
+
+优化代码
+
+```golang
+type MyStruct struct {
+	sync.Mutex
+
+	// other fields
+}
+
+func (s *MyStruct) DoSomething() {
+	s.Lock()
+	defer s.Unlock()
+
+	// do something
+}
+```
+
+```golang
+type Lockable[T any] struct {
+	sync.Mutex
+	value T
+}
+
+func (l *Lockable[T]) Get() T {
+	l.Lock()
+	defer l.Unlock()
+
+	return l.value
+}
+
+func (l *Lockable[T]) Set(v T) {
+	l.Lock()
+	defer l.Unlock()
+
+	l.value = v
+} 
+
+func main() {
+	var safeUser Lockable[User]
+	safeUser.set(...)
+}
+
+type LockableUser Lockable[User]
+```
+
+## 谨慎使用context.Value
+
+当多个函数之间共享数据时：
+
+```golang
+func A(ctx context.Context, transactionID string) {
+	payment := db.GetPayment(ctx, transactionID)
+	ctx = context.WithValue(ctx, "payment", payment)
+
+	B(ctx)
+}
+
+func B(ctx context.Context) {
+	// ...
+	C(ctx)
+}
+
+func C(ctx context.Context) {
+	payment, ok := ctx.Value("payment").(*Payment)
+	
+	// ...
+}
+```
+
+可能存在的一些问题：
+
+- 我们放弃了Go在编译期间提供的类型检查安全性
+- 我们将数据放入黑盒子中并希望稍后再获取它，但是一周之后可能就会想瞎子一样得去黑盒子中搜索它了
+- 放了context会使得payment数据看似是可选的，然而实际上很重要
+
+使用隐式可能不是一个坏主意，但却很难成为一个好主意。
+
+Go官方文档确实提到它对于跨API边界和进程之间传递请求相关的值很有用。
+
+- 开始时间
+- 调用者的IP
+- Trace和span ID
+- 被调用的HTTP路由
+- ...
+
+## 避免使用`time.Sleep()`，它不能被context感知且无法被中断
+
+```golang
+func doJob() {
+	for ;; time.Sleep(5 * time.Send) {
+		// some work
+	}
+}
+
+func doJob() {
+	for {
+		// some work
+		time.Sleep(5 * time.Second)
+	}
+}
+```
+
+这样的循环无法通过context cancel来停止。
+
+```golang
+func doWork(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// doWork(ctx)
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+```
+
+使用time包作为信号
+
+```golang
+for {
+	//... Our intended operation
+
+	select {
+	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+	    return
+	}
+}
+```
+
+这种方法简单，但并不完美
+
+- 每次都在分配一个新的channel
+- Go社区指出，time.After可能会导致短暂的内存泄漏
+
+```golang
+delay := time.NewTimer(5 * time.Second)
+
+for {
+	// ... Our intended operations
+
+	select {
+	case <-delay.C:
+		_ = delay.Reset(5 * time.Second)
+	case <-ctx.Done():
+		if !delay.Stop() {
+			<-delay.C
+		}
+		return
+	}
+}
+```
+
+## 让main函数更清晰并且易于测试
+
+通常，我们会在main函数中执行许多不同的任务，例如：
+
+- 设置环境，JSON配置
+- 连接数据库或Redis配置
+- 创建与消息队列的连接或与其他服务进行链接
+
+```golang
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(args []string) error {
+	conf, err := config.Fetch(args)
+	if err != nil {
+		return fmt.Errorf("failed to fetch config: %w", err)
+	}
+
+	db, err := connectDB(conf.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to databasse: %w", err)
+	}
+	// This will now be called when run() exits.
+	defer db.Close()
+
+	// ...
+
+	return nil
+}
+```
+
+## 在fmt.Errorf中简化错误信息
+
+```golang
+if err != nil {
+	return fmt.Errorf("open file %s: %w", filename, err)
+}
+```
+
+## 使用泛型返回指针
+
+```golang
+func Ptr[T any](v T) *T {
+	return &v
+}
+
+timePtr := Ptr(time.Now())
+
+intPtr := Ptr(42)
+
+stringPtr := Ptr("gopher")
+```
+
+
